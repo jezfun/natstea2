@@ -101,6 +101,29 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
+// ─── TEA SOUND ──────────────────────────────────────────────────────
+const teaSynth = window.speechSynthesis;
+let teaCooldown = 0; // prevent overlapping
+
+function sayTea(big) {
+  if (teaCooldown > 0) return;
+  const msg = new SpeechSynthesisUtterance(big ? 'LOVELY TEA!' : 'TEA!');
+  msg.rate = big ? 1.0 : 1.6;
+  msg.pitch = big ? 0.8 : 1.4;
+  msg.volume = 0.8;
+  teaSynth.speak(msg);
+  teaCooldown = big ? 30 : 8;
+}
+
+function sayCheese() {
+  const msg = new SpeechSynthesisUtterance('oooo cheese!');
+  msg.rate = 1.0;
+  msg.pitch = 1.2;
+  msg.volume = 1.0;
+  teaSynth.speak(msg);
+  teaCooldown = 40;
+}
+
 // ─── PLAYER IMAGE ───────────────────────────────────────────────────
 let playerImg = null;
 
@@ -328,8 +351,10 @@ function updatePac() {
     const c = ((pac.x % COLS) + COLS) % COLS;
     if (map[pac.y] && map[pac.y][c] === 0) {
       map[pac.y][c] = 2; score += 10; totalDots--;
+      sayTea(false);
     } else if (map[pac.y] && map[pac.y][c] === 3) {
       map[pac.y][c] = 2; score += 50; totalDots--;
+      sayTea(true);
       powerTimer = POWER_DURATION;
       ghosts.forEach(g => { if (!g.inHouse) { g.frightened = true; g.dx *= -1; g.dy *= -1; }});
     }
@@ -441,6 +466,7 @@ function checkCollisions() {
       if (g.frightened) {
         score += 200 * eatMultiplier;
         eatMultiplier *= 2;
+        sayCheese();
         g.inHouse = true;
         g.x = CHEESE_HOME.x; g.y = CHEESE_HOME.y;
         g.px = CHEESE_HOME.x * CELL; g.py = CHEESE_HOME.y * CELL;
@@ -454,6 +480,11 @@ function checkCollisions() {
 }
 
 function pacDied() {
+  const msg = new SpeechSynthesisUtterance('ooo scatty balls!');
+  msg.rate = 1.1;
+  msg.pitch = 1.3;
+  msg.volume = 1.0;
+  teaSynth.speak(msg);
   lives--;
   updateHUD();
   if (lives <= 0) {
@@ -687,6 +718,7 @@ function drawReady() {
 function update() {
   if (gameState !== 'playing') return;
   frameCount++;
+  if (teaCooldown > 0) teaCooldown--;
 
   if (powerTimer > 0) {
     powerTimer--;
