@@ -322,6 +322,15 @@ const teaBig   = createTeaSprite(CELL, true);
 let map, score, highScore = 0, lives, level, gameState, totalDots, powerTimer;
 let pac, ghosts;
 let frameCount = 0;
+let teaCollected = 0, startingDots = 0;
+
+// Speed ramps up as you collect tea: starts slow, gets faster
+// Returns multiplier from ~0.5 (start) up to ~1.4 (all tea collected)
+function speedMultiplier() {
+  if (startingDots === 0) return 0.5;
+  const progress = teaCollected / startingDots; // 0 → 1
+  return 0.5 + progress * 0.9;
+}
 const POWER_DURATION = 360;
 const CHEESE_COLORS = ['#FFD700','#FFA500','#FFCC33','#FF8C00'];
 
@@ -344,6 +353,8 @@ function resetMap() {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (map[r][c] === 0 || map[r][c] === 3) totalDots++;
+  startingDots = totalDots;
+  teaCollected = 0;
 }
 
 // Pac spawns at row 11 col 14, cheese spawns in/above the house
@@ -387,6 +398,7 @@ function initGame() {
   score = 0;
   lives = 3;
   level = 1;
+  teaCollected = 0;
   resetMap();
   spawnActors();
   gameState = 'playing';
@@ -413,10 +425,10 @@ function updatePac() {
 
     const c = ((pac.x % COLS) + COLS) % COLS;
     if (map[pac.y] && map[pac.y][c] === 0) {
-      map[pac.y][c] = 2; score += 10; totalDots--;
+      map[pac.y][c] = 2; score += 10; totalDots--; teaCollected++;
       sayTea(false);
     } else if (map[pac.y] && map[pac.y][c] === 3) {
-      map[pac.y][c] = 2; score += 50; totalDots--;
+      map[pac.y][c] = 2; score += 50; totalDots--; teaCollected++;
       sayTea(true);
       powerTimer = POWER_DURATION;
       ghosts.forEach(g => { if (!g.inHouse) { g.frightened = true; g.dx *= -1; g.dy *= -1; }});
@@ -429,12 +441,14 @@ function updatePac() {
   }
 
   const targetPx = pac.x * CELL, targetPy = pac.y * CELL;
+  const sm = speedMultiplier();
+  const pacSpd = Math.max(0.5, pac.speed * sm);
   const diffX = targetPx - pac.px;
   if (Math.abs(diffX) > W / 2) pac.px = targetPx;
-  else if (pac.px < targetPx) pac.px = Math.min(pac.px + pac.speed, targetPx);
-  else if (pac.px > targetPx) pac.px = Math.max(pac.px - pac.speed, targetPx);
-  if (pac.py < targetPy) pac.py = Math.min(pac.py + pac.speed, targetPy);
-  else if (pac.py > targetPy) pac.py = Math.max(pac.py - pac.speed, targetPy);
+  else if (pac.px < targetPx) pac.px = Math.min(pac.px + pacSpd, targetPx);
+  else if (pac.px > targetPx) pac.px = Math.max(pac.px - pacSpd, targetPx);
+  if (pac.py < targetPy) pac.py = Math.min(pac.py + pacSpd, targetPy);
+  else if (pac.py > targetPy) pac.py = Math.max(pac.py - pacSpd, targetPy);
 
   if (pac.dx !== 0 || pac.dy !== 0) {
     pac.mouth += 0.12 * pac.mouthDir;
@@ -464,7 +478,9 @@ function updateCheese(g) {
   }
 
   const targetPx = g.x * CELL, targetPy = g.y * CELL;
-  const spd = g.frightened ? Math.max(0.5, g.speed * 0.55) : g.speed + (level - 1) * 0.1;
+  const sm = speedMultiplier();
+  const baseSpd = g.speed * sm;
+  const spd = g.frightened ? Math.max(0.5, baseSpd * 0.55) : baseSpd + (level - 1) * 0.1;
   const diffX = targetPx - g.px;
   if (Math.abs(diffX) > W / 2) g.px = targetPx;
   else if (g.px < targetPx) g.px = Math.min(g.px + spd, targetPx);
