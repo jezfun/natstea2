@@ -389,7 +389,7 @@ function makeCheese(col, row, idx, inHouse) {
     frightened: false,
     speed: Math.max(1, Math.round(CELL / 22)),
     inHouse,
-    releaseTimer: inHouse ? idx * 120 : 0,
+    releaseTimer: inHouse ? idx * 60 : 0, // release faster — more pressure early
     scatterTimer: 0, scatter: false,
   };
 }
@@ -479,8 +479,14 @@ function updateCheese(g) {
 
   const targetPx = g.x * CELL, targetPy = g.y * CELL;
   const sm = speedMultiplier();
-  const baseSpd = g.speed * sm;
-  const spd = g.frightened ? Math.max(0.5, baseSpd * 0.55) : baseSpd + (level - 1) * 0.1;
+  let baseSpd = g.speed * sm;
+  // Blinky gets a hunter boost when lots of tea is collected (like Cruise Elroy)
+  if (g.idx === 0 && startingDots > 0) {
+    const progress = teaCollected / startingDots;
+    if (progress > 0.5) baseSpd *= 1.15; // faster after half the tea
+    if (progress > 0.75) baseSpd *= 1.15; // even faster in the final quarter
+  }
+  const spd = g.frightened ? Math.max(0.5, baseSpd * 0.55) : baseSpd + (level - 1) * 0.15;
   const diffX = targetPx - g.px;
   if (Math.abs(diffX) > W / 2) g.px = targetPx;
   else if (g.px < targetPx) g.px = Math.min(g.px + spd, targetPx);
@@ -505,24 +511,41 @@ function chooseCheeseDir(g) {
 
   let target;
   const corners = [{c:25,r:1},{c:2,r:1},{c:25,r:15},{c:2,r:15}];
+
+  // Much shorter scatter — only 80 frames scatter, then 400 frames hunting
   g.scatterTimer++;
-  g.scatter = g.scatterTimer < 300;
-  if (g.scatterTimer > 600) g.scatterTimer = 0;
+  g.scatter = g.scatterTimer < 80;
+  if (g.scatterTimer > 480) g.scatterTimer = 0;
 
   if (g.scatter) {
     target = corners[g.idx];
   } else {
     switch(g.idx) {
+      // BLINKY — direct relentless chase, speeds up as dots disappear
       case 0: target = {c: pac.x, r: pac.y}; break;
+
+      // PINKY — ambush, targets 4 tiles ahead of pac's direction
       case 1: target = {c: pac.x + pac.dx * 4, r: pac.y + pac.dy * 4}; break;
+
+      // INKY — flanking pincer, uses Blinky's position to triangulate
       case 2: {
         const b = ghosts[0];
         const ahead = {c: pac.x + pac.dx * 2, r: pac.y + pac.dy * 2};
         target = {c: ahead.c * 2 - b.x, r: ahead.r * 2 - b.y}; break;
       }
+
+      // CLYDE — cut-off hunter: when close, predicts where pac is heading
+      // and tries to get AHEAD of pac; when far, charges straight at pac
       case 3: {
         const d = sqDist(g.x, g.y, pac.x, pac.y);
-        target = d > 64 ? {c: pac.x, r: pac.y} : corners[3]; break;
+        if (d < 36) {
+          // Close — cut off escape route by targeting well ahead
+          target = {c: pac.x + pac.dx * 6, r: pac.y + pac.dy * 6};
+        } else {
+          // Far — charge directly at pac
+          target = {c: pac.x, r: pac.y};
+        }
+        break;
       }
     }
   }
@@ -550,7 +573,7 @@ function checkCollisions() {
         g.x = CHEESE_HOME.x; g.y = CHEESE_HOME.y;
         g.px = CHEESE_HOME.x * CELL; g.py = CHEESE_HOME.y * CELL;
         g.frightened = false;
-        g.releaseTimer = 150;
+        g.releaseTimer = 80; // back hunting quickly
       } else {
         pacDied(); return;
       }
@@ -618,37 +641,38 @@ function drawPac() {
   const cy = pac.py + CELL / 2;
   const r = CELL * 0.45;
 
+  // Direction angle for the mouth
+  let angle = 0;
+  if (pac.dx === 1) angle = 0;
+  else if (pac.dx === -1) angle = Math.PI;
+  else if (pac.dy === -1) angle = -Math.PI / 2;
+  else if (pac.dy === 1) angle = Math.PI / 2;
+
   if (playerImg) {
+    // Draw Nat's photo clipped to a pac-man mouth shape
     ctx.save();
     ctx.shadowColor = '#FFD700';
     ctx.shadowBlur = 8;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, angle + pac.mouth, angle + Math.PI * 2 - pac.mouth);
+    ctx.closePath();
     ctx.clip();
     ctx.drawImage(playerImg, cx - r, cy - r, r * 2, r * 2);
     ctx.restore();
 
-    // Direction arrow
-    if (pac.dx !== 0 || pac.dy !== 0) {
-      ctx.fillStyle = '#FFD700';
-      ctx.globalAlpha = 0.6;
-      const al = CELL * 0.18;
-      const ax = cx + pac.dx * (r + al), ay = cy + pac.dy * (r + al);
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(ax - pac.dy * al * 0.7 - pac.dx * al, ay + pac.dx * al * 0.7 - pac.dy * al);
-      ctx.lineTo(ax + pac.dy * al * 0.7 - pac.dx * al, ay - pac.dx * al * 0.7 - pac.dy * al);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
+    // Gold outline around the pac shape for visibility
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = Math.max(1.5, CELL * 0.05);
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, angle + pac.mouth, angle + Math.PI * 2 - pac.mouth);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
   } else {
-    let angle = 0;
-    if (pac.dx === 1) angle = 0;
-    else if (pac.dx === -1) angle = Math.PI;
-    else if (pac.dy === -1) angle = -Math.PI / 2;
-    else if (pac.dy === 1) angle = Math.PI / 2;
-
     ctx.fillStyle = '#FFD700';
     ctx.shadowColor = '#FFD700';
     ctx.shadowBlur = 8;
